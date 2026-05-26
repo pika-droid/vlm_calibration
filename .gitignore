@@ -1,0 +1,33 @@
+# Exclude virtual environments
+venv/
+.venv/
+env/
+
+# Exclude local model/library checkouts
+mqt-llava/
+lmms-eval/
+
+# PyTorch and python cache files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.ipynb_checkpoints/
+
+# System files
+.DS_Store
+Thumbs.db
+
+# Exclude project outputs, data files, and logs
+*.jsonl
+*.csv
+vlm-calibration/
+results/
+plots/
+logs/
+checkpoints/
+
+# IDE files
+.vscode/
+.idea/
