@@ -80,10 +80,25 @@ class EvalConfig:
         """Path to the latest checkpoint marker."""
         return Path(self.checkpoint_dir) / "latest.txt"
 
+    def __post_init__(self) -> None:
+        """Resolve directories dynamically based on environment."""
+        workspace_path = Path("/workspace")
+        if not workspace_path.exists():
+            project_root = Path(__file__).resolve().parent.parent
+            if self.output_dir == "/workspace/vlm-calibration/results":
+                self.output_dir = str(project_root / "results")
+            if self.plots_dir == "/workspace/vlm-calibration/plots":
+                self.plots_dir = str(project_root / "plots")
+            if self.logs_dir == "/workspace/vlm-calibration/logs":
+                self.logs_dir = str(project_root / "logs")
+            if self.checkpoint_dir == "/workspace/vlm-calibration/checkpoints":
+                self.checkpoint_dir = str(project_root / "checkpoints")
+
     def ensure_dirs(self) -> None:
         """Create all output directories if they don't exist."""
         for d in [self.output_dir, self.plots_dir, self.logs_dir, self.checkpoint_dir]:
             Path(d).mkdir(parents=True, exist_ok=True)
+
 
 
 # Default configuration instance

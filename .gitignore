@@ -31,3 +31,8 @@ checkpoints/
 # IDE files
 .vscode/
 .idea/
+
+# Local testing and verification environments
+venv_local/
+test_run_output/
+

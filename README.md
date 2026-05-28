@@ -45,6 +45,7 @@ This repository contains the evaluation harness and visualization pipeline for i
 │   ├── model_wrapper.py          # Wrapper for MQT-LLaVA loading and inference
 │   ├── load_vqav2.py             # Dataset inspector script
 │   ├── smoke_test.py             # Sanity check for token sweeps
+│   ├── verify_pipeline.py        # CPU-only mock verification pipeline
 │   └── multi_scale_harness.py    # Main evaluation harness
 ├── setup/
 │   └── runpod_setup.sh           # RunPod dependency setup script
@@ -55,6 +56,34 @@ This repository contains the evaluation harness and visualization pipeline for i
 ├── .gitignore                    # Local environment and cache exclusions
 └── README.md                     # Project documentation
 ```
+
+---
+
+## Local / CPU-only Verification (No GPU Required)
+
+If you do not have a GPU locally or do not want to download the multi-gigabyte models and VQAv2 dataset, you can run the mock-based verification pipeline to verify that the evaluation harness, statistics compilation, and plotting tools execute correctly:
+
+1. **Create and Activate a Local Virtual Environment**:
+   ```bash
+   python -m venv venv_local
+   # On Windows:
+   venv_local\Scripts\activate.bat
+   # On macOS/Linux:
+   source venv_local/bin/activate
+   ```
+
+2. **Install Lightweight Dependencies**:
+   ```bash
+   pip install torch --index-url https://download.pytorch.org/whl/cpu
+   pip install datasets sentence-transformers matplotlib pandas seaborn tqdm Pillow
+   ```
+
+3. **Run the Verification Script**:
+   ```bash
+   python -m evaluation.verify_pipeline
+   ```
+
+This mock pipeline executes the harness over synthetic samples, compiles summary statistics, and runs all 3 visualization generators. The generated test outputs and charts will be saved under the `test_run_output/` directory for inspection.
 
 ---
 
