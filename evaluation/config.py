@@ -94,6 +94,12 @@ class EvalConfig:
             if self.checkpoint_dir == "/workspace/vlm-calibration/checkpoints":
                 self.checkpoint_dir = str(project_root / "checkpoints")
 
+        # Dynamically scale num_workers to half of available vCPUs to prevent CPU thrashing
+        import os
+        cpu_count = os.cpu_count()
+        if cpu_count is not None:
+            self.num_workers = min(self.num_workers, max(1, cpu_count // 2))
+
     def ensure_dirs(self) -> None:
         """Create all output directories if they don't exist."""
         for d in [self.output_dir, self.plots_dir, self.logs_dir, self.checkpoint_dir]:
