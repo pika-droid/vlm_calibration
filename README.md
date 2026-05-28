@@ -17,7 +17,7 @@ This repository contains the evaluation harness and visualization pipeline for i
 * **Image & Token Caching (`sweep_optimized`)**: Reduced image preprocessing (PIL -> Tensor conversion) and prompt tokenization frequency from 8 times per sample to **exactly once**.
 * **Mixed Precision (`torch.amp.autocast`)**: Implemented half-precision contexts for faster Tensor Core execution on NVIDIA GPUs.
 * **Resampler Compilation (`torch.compile`)**: Applied JIT compilation with `dynamic=True` and `mode="reduce-overhead"` to MQT-LLaVA's query abstractor module.
-* **VRAM and CPU Pinning**: Pinned the sentence embeddings model (`SentenceTransformer`) to CPU to conserve GPU VRAM for the 7B LLM. Optimized dataloader threads (`num_workers=8`, `pin_memory=True`, `prefetch_factor=2`) to fit RunPod's 16 vCPU setup.
+* **VRAM and CPU Pinning**: Pinned the sentence embeddings model (`SentenceTransformer`) to CPU to conserve GPU VRAM for the 7B LLM. Optimized dataloader parameters (`pin_memory=True`, `prefetch_factor=2`) and dynamically scale dataloader threads (`num_workers` set to half of available vCPUs) to fit your RunPod's hardware footprint.
 * **Reproducibility**: All random seeds (`torch`, `CUDA`, `numpy`, `random`, `cudnn.deterministic`) are set via `set_seed(config.seed)` at the start of each evaluation run, following PyTorch best practices.
 
 > **Security Note**: MQT-LLaVA's `load_pretrained_model()` internally calls `torch.load()` without `weights_only=True`. This is inherited from the upstream LLaVA codebase. Only load model checkpoints from trusted sources (e.g. the official HuggingFace repo `gordonhu/MQT-LLaVA-7b`).
