@@ -22,6 +22,9 @@ from tqdm import tqdm
 
 from evaluation.config import EvalConfig, DEFAULT_CONFIG
 from evaluation.model_wrapper import MQTLLaVAWrapper
+from visualization.variance_plots import generate_variance_plots
+from visualization.reliability_diagram import plot_reliability_diagrams
+from visualization.ece_summary import generate_ece_summary
 
 
 def compute_vqa_accuracy(pred_answer: str, gt_answers: list[str]) -> float:
@@ -200,12 +203,61 @@ def run_evaluation(config: EvalConfig) -> None:
                 
                 # Write to JSONL
                 out_file.write(json.dumps(entry, ensure_ascii=False) + "\n")
+                out_file.flush()
                 
                 # Update progress bar
                 progress_bar.set_postfix({
                     "stability": f"{answer_stability:.2f}",
                     "avg_acc": f"{stats['accuracy_mean']:.2f}"
                 })
+
+                # Trigger intermediate updates and archiving
+                processed_count = idx + 1
+                if processed_count % config.checkpoint_interval == 0:
+                    print(f"\n--- [Checkpoint {processed_count}] Updating intermediate visualizations... ---")
+                    try:
+                        # Compile current CSV summary first
+                        compile_summary_csv(config)
+                        
+                        generate_variance_plots(config)
+                        plot_reliability_diagrams(config)
+                        generate_ece_summary(config)
+                    except Exception as ve:
+                        print(f"Warning: Intermediate visualization update failed: {ve}")
+                        
+                if processed_count % config.archive_interval == 0:
+                    print(f"\n--- [Archive Snapshot {processed_count}] Archiving plots and statistics... ---")
+                    try:
+                        # Compile current CSV snapshot
+                        compile_summary_csv(config)
+                        
+                        # Create unique snapshot directory
+                        snapshot_dir = Path(config.plots_dir) / f"snapshot_{processed_count}"
+                        snapshot_dir.mkdir(parents=True, exist_ok=True)
+                        
+                        # Configure a snapshot copy of config pointing to snapshot_dir
+                        snapshot_config = EvalConfig(
+                            model_path=config.model_path,
+                            subset_size=config.subset_size,
+                            output_dir=config.output_dir,
+                            plots_dir=str(snapshot_dir),
+                            archive_interval=config.archive_interval,
+                            checkpoint_interval=config.checkpoint_interval,
+                            num_workers=config.num_workers
+                        )
+                        # Run the plots with the snapshot config
+                        generate_variance_plots(snapshot_config)
+                        plot_reliability_diagrams(snapshot_config)
+                        generate_ece_summary(snapshot_config)
+                        
+                        # Copy the current summary CSV snapshot into the snapshot directory
+                        import shutil
+                        if config.summary_csv_path().exists():
+                            shutil.copy(config.summary_csv_path(), snapshot_dir / f"summary_statistics_{processed_count}.csv")
+                            
+                        print(f"Snapshot successfully archived at: {snapshot_dir}")
+                    except Exception as ae:
+                        print(f"Warning: Archiving snapshot failed: {ae}")
                 
             except Exception as e:
                 print(f"\nError processing sample {question_id} at index {idx}: {e}")

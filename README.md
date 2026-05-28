@@ -9,8 +9,9 @@ This repository contains the evaluation harness and visualization pipeline for i
 ### 1. Multi-Scale Evaluation Loop & Setup
 * **Environment Provisioning**: Created `setup/runpod_setup.sh` to fully configure dependencies (lmms-eval, mqt-llava, sentence-transformers, etc.) inside RunPod's persistent volume.
 - **Harness Implementation**: Built `evaluation/multi_scale_harness.py` to sweep across visual token depths ($m \in [2, 4, 8, 16, 36, 64, 144, 256]$) per sample.
-- **Backwards Compatibility & Checkpointing**: Added robust checkpointing (`results/multi_scale_results.jsonl`) to support resuming interrupted sweeps. Added support for unlabeled splits (like test splits) where ground-truth answers are missing, automatically logging accuracies as `None` to prevent runtime crashes.
-- **Configurability**: Structured settings (precision, dataset splits, sweeps, generation temp) within `evaluation/config.py`.
+- **Backwards Compatibility & Checkpointing**: Added robust checkpointing (`results/multi_scale_results.jsonl`) to support resuming interrupted sweeps. Added support for unlabeled splits (like test splits) where ground-truth answers are missing.
+- **Intermediate Updates & Snapshots**: Added hooks to automatically update the live visualizations every 500 samples (`checkpoint_interval`), and create archived snapshots (figures, markdown table, ECE bar chart, and snapshot copy of CSV statistics) in unique folders (e.g. `plots/snapshot_10000/`) every 10k samples (`archive_interval`).
+- **Configurability**: Structured settings within `evaluation/config.py`.
 
 ### 2. PyTorch & RunPod Optimizations
 * **Image & Token Caching (`sweep_optimized`)**: Reduced image preprocessing (PIL -> Tensor conversion) and prompt tokenization frequency from 8 times per sample to **exactly once**.
@@ -19,7 +20,7 @@ This repository contains the evaluation harness and visualization pipeline for i
 * **VRAM and CPU Pinning**: Pinned the sentence embeddings model (`SentenceTransformer`) to CPU to conserve GPU VRAM for the 7B LLM. Optimized dataloader threads (`num_workers=8`, `pin_memory=True`, `prefetch_factor=2`) to fit RunPod's 16 vCPU setup.
 
 ### 3. Visualizations & Analytical Tools
-- **Variance Distribution**: Plots answer stability distribution histograms and tabulates the highest/lowest variance question-answer galleries in Markdown (`visualization/variance_plots.py`).
+- **Visual Variance Profiling**: Updates `visualization/variance_plots.py` to retrieve target PIL Images from the dataset, generate dual-panel stability plots (source image side-by-side with a detailed token-sweep results table), and embeds them directly inside `variance_gallery.md`.
 - **Reliability Diagrams**: Generates 8-panel empirical accuracy vs confidence calibration charts (`visualization/reliability_diagram.py`).
 - **ECE Summary**: Compares Expected Calibration Error (ECE) across different scale selections to visualize how calibration changes under token reduction (`visualization/ece_summary.py`).
 

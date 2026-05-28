@@ -41,6 +41,7 @@ class EvalConfig:
 
     # ── Harness Control ──────────────────────────────────────────────────
     checkpoint_interval: int = 500     # save results every N samples
+    archive_interval: int = 10000      # archive snapshots of plots/stats every N samples
     batch_size: int = 1                # inference batch size (1 for consistency)
     num_workers: int = 8               # dataloader workers (16 vCPU available)
     pin_memory: bool = True            # faster CPU→GPU transfer
