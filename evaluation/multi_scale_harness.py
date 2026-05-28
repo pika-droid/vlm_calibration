@@ -11,10 +11,12 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import logging
 from pathlib import Path
 import re
 import random
 import shutil
+import sys
 import time
 import numpy as np
 import torch
@@ -42,6 +44,35 @@ def set_seed(seed: int = 42) -> None:
     random.seed(seed)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
+
+
+def setup_logging(config: EvalConfig) -> logging.Logger:
+    """Set up file and console logger."""
+    config.ensure_dirs()
+    log_file = Path(config.logs_dir) / "evaluation.log"
+    
+    # Configure logger
+    logger = logging.getLogger("VLM_Calibration")
+    logger.setLevel(logging.INFO)
+    
+    # Check if handlers already exist to prevent duplicate logging
+    if not logger.handlers:
+        # File Handler (append mode)
+        file_handler = logging.FileHandler(log_file, mode="a", encoding="utf-8")
+        file_handler.setFormatter(logging.Formatter(
+            fmt="[%(asctime)s] %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S"
+        ))
+        file_handler.setLevel(logging.INFO)
+        logger.addHandler(file_handler)
+        
+        # Console Handler (prints direct messages)
+        console_handler = logging.StreamHandler(sys.stdout)
+        console_handler.setFormatter(logging.Formatter(fmt="%(message)s"))
+        console_handler.setLevel(logging.INFO)
+        logger.addHandler(console_handler)
+        
+    return logger
 
 
 def compute_vqa_accuracy(pred_answer: str, gt_answers: list[str]) -> float:
@@ -73,27 +104,30 @@ def run_evaluation(config: EvalConfig) -> None:
     # Ensure directories exist
     config.ensure_dirs()
 
+    # Set up logging
+    logger = setup_logging(config)
+
     # Set all random seeds for reproducibility
     set_seed(config.seed)
     
-    print("==========================================")
-    print(" Starting VLM Calibration Evaluation Harness")
-    print("==========================================")
+    logger.info("==========================================")
+    logger.info(" Starting VLM Calibration Evaluation Harness")
+    logger.info("==========================================")
     
     # 1. Load VQAv2 dataset
-    print(f"Loading {config.dataset_name} ({config.dataset_split} split)...")
+    logger.info(f"Loading {config.dataset_name} ({config.dataset_split} split)...")
     dataset = load_dataset(config.dataset_name, split=config.dataset_split)
     
     # Handle subset slicing
     total_samples = len(dataset)
     if config.subset_size is not None:
         dataset = dataset.select(range(min(config.subset_size, total_samples)))
-        print(f"Using a subset of {len(dataset):,} samples (out of {total_samples:,}).")
+        logger.info(f"Using a subset of {len(dataset):,} samples (out of {total_samples:,}).")
     else:
-        print(f"Running on all {len(dataset):,} samples.")
+        logger.info(f"Running on all {len(dataset):,} samples.")
         
     # 2. Initialize Model Wrapper
-    print(f"Loading VLM from {config.model_path} in {config.precision}...")
+    logger.info(f"Loading VLM from {config.model_path} in {config.precision}...")
     vlm = MQTLLaVAWrapper(
         model_path=config.model_path,
         precision=config.precision
@@ -102,7 +136,7 @@ def run_evaluation(config: EvalConfig) -> None:
         torch.cuda.empty_cache()
     
     # 3. Initialize Sentence Embeddings Model (runs on CPU to conserve GPU VRAM)
-    print(f"Loading sentence similarity model '{config.embedding_model}'...")
+    logger.info(f"Loading sentence similarity model '{config.embedding_model}'...")
     embed_model = SentenceTransformer(config.embedding_model, device="cpu")
     
     # 4. Check for existing checkpoints to resume progress
@@ -116,15 +150,15 @@ def run_evaluation(config: EvalConfig) -> None:
                 completed = sum(1 for _ in f)
             if completed < len(dataset):
                 start_idx = completed
-                print(f"Resuming from checkpoint. Already completed {start_idx:,} samples.")
+                logger.info(f"Resuming from checkpoint. Already completed {start_idx:,} samples.")
             else:
-                print("All samples are already processed. Exiting.")
+                logger.info("All samples are already processed. Exiting.")
                 return
         except Exception as e:
-            print(f"Error reading checkpoint: {e}. Starting from scratch.")
+            logger.info(f"Error reading checkpoint: {e}. Starting from scratch.")
             
-    print(f"Output JSONL path: {config.results_jsonl_path()}")
-    print(f"Summary CSV path:  {config.summary_csv_path()}")
+    logger.info(f"Output JSONL path: {config.results_jsonl_path()}")
+    logger.info(f"Summary CSV path:  {config.summary_csv_path()}")
     
     # Open JSONL in append mode ('a')
     with open(config.results_jsonl_path(), "a" if start_idx > 0 else "w", encoding="utf-8") as out_file:
@@ -233,7 +267,7 @@ def run_evaluation(config: EvalConfig) -> None:
                 # Trigger intermediate updates and archiving
                 processed_count = idx + 1
                 if processed_count % config.checkpoint_interval == 0:
-                    print(f"\n--- [Checkpoint {processed_count}] Updating intermediate visualizations... ---")
+                    logger.info(f"\n--- [Checkpoint {processed_count}] Updating intermediate visualizations... ---")
                     try:
                         # Compile current CSV summary first
                         compile_summary_csv(config)
@@ -242,10 +276,10 @@ def run_evaluation(config: EvalConfig) -> None:
                         plot_reliability_diagrams(config)
                         generate_ece_summary(config)
                     except Exception as ve:
-                        print(f"Warning: Intermediate visualization update failed: {ve}")
+                        logger.info(f"Warning: Intermediate visualization update failed: {ve}")
                         
                 if processed_count % config.archive_interval == 0:
-                    print(f"\n--- [Archive Snapshot {processed_count}] Archiving plots and statistics... ---")
+                    logger.info(f"\n--- [Archive Snapshot {processed_count}] Archiving plots and statistics... ---")
                     try:
                         # Compile current CSV snapshot
                         compile_summary_csv(config)
@@ -264,33 +298,34 @@ def run_evaluation(config: EvalConfig) -> None:
                         if config.summary_csv_path().exists():
                             shutil.copy(config.summary_csv_path(), snapshot_dir / f"summary_statistics_{processed_count}.csv")
                             
-                        print(f"Snapshot successfully archived at: {snapshot_dir}")
+                        logger.info(f"Snapshot successfully archived at: {snapshot_dir}")
                     except Exception as ae:
-                        print(f"Warning: Archiving snapshot failed: {ae}")
+                        logger.info(f"Warning: Archiving snapshot failed: {ae}")
                 
             except Exception as e:
-                print(f"\nError processing sample {question_id} at index {idx}: {e}")
+                logger.info(f"\nError processing sample {question_id} at index {idx}: {e}")
                 continue
                 
     # 6. Post-processing: Compile summary CSV
-    print("\nEvaluation completed. Generating summary CSV statistics...")
+    logger.info("\nEvaluation completed. Generating summary CSV statistics...")
     try:
         compile_summary_csv(config)
     except Exception as e:
-        print(f"Error compiling summary CSV: {e}")
+        logger.info(f"Error compiling summary CSV: {e}")
         
-    print("\n==========================================")
-    print(" Evaluation Harness Finished successfully!")
-    print("==========================================")
+    logger.info("\n==========================================")
+    logger.info(" Evaluation Harness Finished successfully!")
+    logger.info("==========================================")
 
 
 def compile_summary_csv(config: EvalConfig) -> None:
     """Read the JSONL output and generate a flat summary CSV of all statistics."""
+    logger = logging.getLogger("VLM_Calibration")
     jsonl_path = config.results_jsonl_path()
     csv_path = config.summary_csv_path()
     
     if not jsonl_path.exists():
-        print(f"Error: JSONL file not found at {jsonl_path}")
+        logger.info(f"Error: JSONL file not found at {jsonl_path}")
         return
         
     headers = [
@@ -311,7 +346,7 @@ def compile_summary_csv(config: EvalConfig) -> None:
         
     with open(jsonl_path, "r", encoding="utf-8") as f_in, \
          open(csv_path, "w", newline="", encoding="utf-8") as f_out:
-        
+         
         writer = csv.writer(f_out)
         writer.writerow(headers)
         
@@ -345,7 +380,7 @@ def compile_summary_csv(config: EvalConfig) -> None:
                 
             writer.writerow(row)
             
-    print(f"Summary statistics exported to {csv_path}")
+    logger.info(f"Summary statistics exported to {csv_path}")
 
 
 if __name__ == "__main__":

@@ -271,7 +271,8 @@ def main() -> None:
         plots_dir / "calibration_stats.json",
         plots_dir / "ece_comparison.png",
         plots_dir / "calibration_metrics_table.md",
-        plots_dir / "variance_gallery.md"
+        plots_dir / "variance_gallery.md",
+        logs_dir / "evaluation.log"
     ]
     
     success = True
