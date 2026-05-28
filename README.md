@@ -92,8 +92,10 @@ This mock pipeline executes the harness over synthetic samples, compiles summary
 To run this pipeline on a RunPod instance (e.g. RTX A6000 with the **PyTorch 2.8 + CUDA 12.8** template):
 
 ### 1. Initialize the VM Environment
-Run the setup script to clone models, configure paths, and build editable library wrappers:
+Navigate to your `/workspace` volume and pull the latest changes, then run the setup script to provision paths and build library wrappers:
 ```bash
+cd /workspace
+git pull origin main
 bash setup/runpod_setup.sh
 ```
 
@@ -103,19 +105,39 @@ source /workspace/venv/bin/activate
 ```
 
 ### 3. Run the Smoke Test
-Verify that the model wrapper, tokenizer, and confidence extraction are functional:
+Verify that the model wrapper, tokenizer, and confidence extraction are functional on the GPU:
 ```bash
 python -m evaluation.smoke_test
 ```
 
 ### 4. Launch the Evaluation Harness
-Run the harness on a small subset (e.g., 500 samples) to verify runtime performance before running on the full 1.1M dataset:
-```bash
-python -m evaluation.multi_scale_harness --subset-size 500
-```
+You can run a quick check on a subset, or launch the full long-running evaluation loop in the background:
+
+* **Foreground subset run (e.g., 500 samples)**:
+  ```bash
+  python -m evaluation.multi_scale_harness --subset-size 500
+  ```
+
+* **Background full evaluation run (recommended)**:
+  Since the harness automatically logs timestamps and milestones to `logs/evaluation.log`, you can run it in the background to ensure it continues even if your terminal session disconnects:
+  ```bash
+  nohup python -m evaluation.multi_scale_harness > logs/terminal.log 2>&1 &
+  ```
+
+* **Monitor run status**:
+  Watch high-level milestones:
+  ```bash
+  tail -f /workspace/vlm-calibration/logs/evaluation.log
+  ```
+  Watch detailed terminal outputs:
+  ```bash
+  tail -f /workspace/vlm-calibration/logs/terminal.log
+  ```
+
+*Note: The harness supports automated checkpointing and recovery. If interrupted, simply relaunching the harness command will detect existing records in `multi_scale_results.jsonl` and resume progress.*
 
 ### 5. Generate Calibration and Stability Plots
-Compile the JSONL results to generate charts and markdown comparison tables:
+Compile results to generate diagrams, charts, and markdown summaries:
 ```bash
 # Generate variance distribution and markdown galleries
 python -m visualization.variance_plots
@@ -126,4 +148,5 @@ python -m visualization.reliability_diagram
 # Create ECE bar chart summary
 python -m visualization.ece_summary
 ```
-Generated charts and tables will be located under `/workspace/vlm-calibration/plots/`.
+Generated charts and comparison tables will be saved under `/workspace/vlm-calibration/plots/`.
+
