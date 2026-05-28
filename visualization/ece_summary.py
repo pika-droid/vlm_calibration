@@ -43,11 +43,12 @@ def generate_ece_summary(config: EvalConfig) -> None:
         "MCE": mce_vals
     })
     
+    if not ece_vals:
+        print("No calibration data available to plot.")
+        return
+    
     # ── 1. Plot ECE vs Token Count Bar Chart ───────────────────────────────
     fig, ax1 = plt.subplots(figsize=(10, 6))
-    
-    # Color palette
-    colors = sns.color_palette("viridis", len(m_values))
     
     # Bar plot for ECE
     bars = ax1.bar(

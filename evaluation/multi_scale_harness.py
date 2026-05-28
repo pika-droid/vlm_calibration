@@ -13,10 +13,13 @@ import csv
 import json
 from pathlib import Path
 import re
+import random
+import shutil
 import time
 import numpy as np
 import torch
 from datasets import load_dataset
+from dataclasses import replace
 from sentence_transformers import SentenceTransformer
 from tqdm import tqdm
 
@@ -25,6 +28,20 @@ from evaluation.model_wrapper import MQTLLaVAWrapper
 from visualization.variance_plots import generate_variance_plots
 from visualization.reliability_diagram import plot_reliability_diagrams
 from visualization.ece_summary import generate_ece_summary
+
+
+def set_seed(seed: int = 42) -> None:
+    """Set all random seeds for full reproducibility.
+
+    Following pytorch-patterns best practice: seeds torch, CUDA, numpy, and
+    Python's random module, and forces cuDNN into deterministic mode.
+    """
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    np.random.seed(seed)
+    random.seed(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
 
 
 def compute_vqa_accuracy(pred_answer: str, gt_answers: list[str]) -> float:
@@ -55,6 +72,9 @@ def run_evaluation(config: EvalConfig) -> None:
     """Run the multi-scale evaluation loop."""
     # Ensure directories exist
     config.ensure_dirs()
+
+    # Set all random seeds for reproducibility
+    set_seed(config.seed)
     
     print("==========================================")
     print(" Starting VLM Calibration Evaluation Harness")
@@ -86,7 +106,6 @@ def run_evaluation(config: EvalConfig) -> None:
     embed_model = SentenceTransformer(config.embedding_model, device="cpu")
     
     # 4. Check for existing checkpoints to resume progress
-    latest_checkpoint = None
     checkpoint_file = config.results_jsonl_path()
     start_idx = 0
     
@@ -164,7 +183,7 @@ def run_evaluation(config: EvalConfig) -> None:
                 # Compute answer stability using sentence embeddings
                 # Normalizing embeddings makes cosine similarity a simple dot product
                 embeddings = embed_model.encode(answers, show_progress_bar=False)
-                norm_embeddings = embeddings / np.linalg.norm(embeddings, axis=1, keepdims=True)
+                norm_embeddings = embeddings / (np.linalg.norm(embeddings, axis=1, keepdims=True) + 1e-10)
                 similarity_matrix = np.dot(norm_embeddings, norm_embeddings.T)
                 
                 # Mean pairwise cosine similarity (excluding self-similarity)
@@ -185,7 +204,7 @@ def run_evaluation(config: EvalConfig) -> None:
                     "confidence_mean_softmax": float(np.mean(softmax_confs)),
                     "confidence_var_softmax": float(np.var(softmax_confs)),
                     "accuracy_mean": float(np.mean(vqa_accuracies)) if has_gt else 0.0,
-                    "first_correct_m": int(config.token_sweep[vqa_accuracies.index(max(vqa_accuracies))]) if has_gt and max(vqa_accuracies) > 0.0 else -1,
+                    "first_correct_m": int(next((config.token_sweep[i] for i, a in enumerate(vqa_accuracies) if a > 0.0), -1)) if has_gt else -1,
                     "num_unique_answers": int(len(set(answers)))
                 }
                 
@@ -235,23 +254,13 @@ def run_evaluation(config: EvalConfig) -> None:
                         snapshot_dir = Path(config.plots_dir) / f"snapshot_{processed_count}"
                         snapshot_dir.mkdir(parents=True, exist_ok=True)
                         
-                        # Configure a snapshot copy of config pointing to snapshot_dir
-                        snapshot_config = EvalConfig(
-                            model_path=config.model_path,
-                            subset_size=config.subset_size,
-                            output_dir=config.output_dir,
-                            plots_dir=str(snapshot_dir),
-                            archive_interval=config.archive_interval,
-                            checkpoint_interval=config.checkpoint_interval,
-                            num_workers=config.num_workers
-                        )
+                        snapshot_config = replace(config, plots_dir=str(snapshot_dir))
                         # Run the plots with the snapshot config
                         generate_variance_plots(snapshot_config)
                         plot_reliability_diagrams(snapshot_config)
                         generate_ece_summary(snapshot_config)
                         
                         # Copy the current summary CSV snapshot into the snapshot directory
-                        import shutil
                         if config.summary_csv_path().exists():
                             shutil.copy(config.summary_csv_path(), snapshot_dir / f"summary_statistics_{processed_count}.csv")
                             

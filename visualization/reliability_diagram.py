@@ -10,6 +10,7 @@ Generates:
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
@@ -96,9 +97,11 @@ def plot_reliability_diagrams(config: EvalConfig) -> None:
     m_values = config.token_sweep
     num_panels = len(m_values)
     
-    # We lay them out in a 2x4 grid since there are exactly 8 token counts
-    fig, axes = plt.subplots(2, 4, figsize=(20, 10), sharex=True, sharey=True)
-    axes_flat = axes.flatten()
+    # Dynamically compute grid layout based on number of token scales
+    ncols = min(4, num_panels)
+    nrows = math.ceil(num_panels / ncols)
+    fig, axes = plt.subplots(nrows, ncols, figsize=(5 * ncols, 5 * nrows), sharex=True, sharey=True)
+    axes_flat = np.atleast_1d(axes).flatten()
     
     ece_values = []
     mce_values = []
@@ -154,7 +157,7 @@ def plot_reliability_diagrams(config: EvalConfig) -> None:
         )
         
         # Visualize the calibration gap as red bars on top of accuracy
-        gap = np.clip(bin_edges[:-1] + bin_width/2 - bin_accs, 0, None)
+        gap = np.clip(bin_confs - bin_accs, 0, None)
         ax.bar(
             bin_edges[:-1],
             gap,
@@ -183,9 +186,9 @@ def plot_reliability_diagrams(config: EvalConfig) -> None:
         ax.set_ylim(0, 1)
         
         # Show labels only on outer panels to clean up presentation
-        if idx >= 4:
+        if idx >= ncols * (nrows - 1):
             ax.set_xlabel("Softmax Confidence")
-        if idx % 4 == 0:
+        if idx % ncols == 0:
             ax.set_ylabel("Empirical Accuracy")
             
     plt.suptitle("Reliability Diagrams & Expected Calibration Error (ECE) across Scale Sweeps", fontsize=16, fontweight="bold", y=0.98)

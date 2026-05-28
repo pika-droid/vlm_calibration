@@ -11,6 +11,7 @@ import sys
 from pathlib import Path
 import re
 import torch
+from typing import Any
 from PIL import Image
 
 # Ensure the cloned mqt-llava repository is in the path
@@ -157,7 +158,7 @@ class MQTLLaVAWrapper:
         num_visual_tokens: int = 256,
         max_new_tokens: int = 64,
         temperature: float = 0.0,
-    ) -> dict[str, any]:
+    ) -> dict[str, Any]:
         """Run inference at a specific token depth and extract confidence metrics.
 
         Args:
@@ -207,9 +208,16 @@ class MQTLLaVAWrapper:
         num_visual_tokens: int = 256,
         max_new_tokens: int = 64,
         temperature: float = 0.0,
-    ) -> dict[str, any]:
-        """Run inference using pre-computed image tensor and input_ids."""
-        with torch.amp.autocast("cuda", dtype=self.dtype):
+    ) -> dict[str, Any]:
+        """Run inference using pre-computed image tensor and input_ids.
+
+        Tensor shapes:
+            image_tensor:  (1, channels, height, width) or model-specific
+            input_ids:     (1, seq_len)
+            outputs.scores: tuple of (1, vocab_size) tensors, one per generated step
+            gen_sequence:  (total_seq_len,) including prompt + generated tokens
+        """
+        with torch.amp.autocast(str(self.device), dtype=self.dtype):
             outputs = self.model.generate(
                 input_ids,
                 images=image_tensor,
@@ -228,8 +236,8 @@ class MQTLLaVAWrapper:
         # In transformers, if we pass inputs_embeds internally (as LLaVA generate does),
         # gen_sequence contains only the generated tokens.
         # But to be safe, we align token index with outputs.scores from the end.
-        num_generated = len(outputs.scores)
-        gen_tokens = gen_sequence[-num_generated:].tolist()
+        num_generated = len(outputs.scores)  # number of decoding steps
+        gen_tokens = gen_sequence[-num_generated:].tolist()  # (num_generated,)
         
         # 5. Extract token-level logprobs and softmax probs
         token_details = []
@@ -241,12 +249,12 @@ class MQTLLaVAWrapper:
         
         # We compute metrics for all generated tokens, and also a version excluding EOS
         for i, logits_step in enumerate(outputs.scores):
-            # logits_step shape: [1, vocab_size]
-            logits = logits_step[0]
+            # logits_step shape: (1, vocab_size)
+            logits = logits_step[0]  # -> (vocab_size,)
             
             # Apply softmax and log_softmax
-            probs = torch.softmax(logits, dim=-1)
-            log_probs = torch.log_softmax(logits, dim=-1)
+            probs = torch.softmax(logits, dim=-1)      # -> (vocab_size,)
+            log_probs = torch.log_softmax(logits, dim=-1)  # -> (vocab_size,)
             
             # Identify the generated token ID at this step
             token_id = gen_tokens[i]
@@ -298,7 +306,7 @@ class MQTLLaVAWrapper:
         token_counts: list[int],
         max_new_tokens: int = 64,
         temperature: float = 0.0,
-    ) -> dict[int, dict[str, any]]:
+    ) -> dict[int, dict[str, Any]]:
         """Run inference across multiple token counts for the same image and question.
 
         Args:
@@ -331,7 +339,7 @@ class MQTLLaVAWrapper:
         token_counts: list[int],
         max_new_tokens: int = 64,
         temperature: float = 0.0,
-    ) -> dict[int, dict[str, any]]:
+    ) -> dict[int, dict[str, Any]]:
         """Optimized sweep: preprocess image and tokenize prompt ONCE.
 
         Args:

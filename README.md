@@ -18,6 +18,9 @@ This repository contains the evaluation harness and visualization pipeline for i
 * **Mixed Precision (`torch.amp.autocast`)**: Implemented half-precision contexts for faster Tensor Core execution on NVIDIA GPUs.
 * **Resampler Compilation (`torch.compile`)**: Applied JIT compilation with `dynamic=True` and `mode="reduce-overhead"` to MQT-LLaVA's query abstractor module.
 * **VRAM and CPU Pinning**: Pinned the sentence embeddings model (`SentenceTransformer`) to CPU to conserve GPU VRAM for the 7B LLM. Optimized dataloader threads (`num_workers=8`, `pin_memory=True`, `prefetch_factor=2`) to fit RunPod's 16 vCPU setup.
+* **Reproducibility**: All random seeds (`torch`, `CUDA`, `numpy`, `random`, `cudnn.deterministic`) are set via `set_seed(config.seed)` at the start of each evaluation run, following PyTorch best practices.
+
+> **Security Note**: MQT-LLaVA's `load_pretrained_model()` internally calls `torch.load()` without `weights_only=True`. This is inherited from the upstream LLaVA codebase. Only load model checkpoints from trusted sources (e.g. the official HuggingFace repo `gordonhu/MQT-LLaVA-7b`).
 
 ### 3. Visualizations & Analytical Tools
 - **Visual Variance Profiling**: Updates `visualization/variance_plots.py` to retrieve target PIL Images from the dataset, generate dual-panel stability plots (source image side-by-side with a detailed token-sweep results table), and embeds them directly inside `variance_gallery.md`.

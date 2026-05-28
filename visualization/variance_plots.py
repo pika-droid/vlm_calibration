@@ -85,7 +85,7 @@ def plot_variance_example(
         ax_img.axis("off")
         ax_img.set_title("Input Image", fontsize=12, fontweight="bold", pad=10)
     else:
-        ax_img.text(0.5, 0.5, "Image Not Available", horizonalalignment="center", verticalalignment="center")
+        ax_img.text(0.5, 0.5, "Image Not Available", horizontalalignment="center", verticalalignment="center")
         ax_img.axis("off")
         ax_img.set_title("Image Missing", fontsize=12, fontweight="bold", pad=10)
     
@@ -226,8 +226,8 @@ def generate_variance_plots(config: EvalConfig) -> None:
         line1 = ax1.plot(m_values, m_means, marker="o", color=color, linewidth=2.5, label="VQA Accuracy")
         ax1.fill_between(
             m_values,
-            [m - 1.96 * s for m, s in zip(m_means, m_sems)],
-            [m + 1.96 * s for m, s in zip(m_means, m_sems)],
+            [mean - 1.96 * sem for mean, sem in zip(m_means, m_sems)],
+            [mean + 1.96 * sem for mean, sem in zip(m_means, m_sems)],
             color=color,
             alpha=0.15
         )
