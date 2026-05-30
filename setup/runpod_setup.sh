@@ -49,6 +49,22 @@ if [ -f "requirements.txt" ]; then
     sed -i 's/torch==2.1.2/torch>=2.1.2/g' requirements.txt
     sed -i 's/torchvision==0.16.2/torchvision>=0.16.2/g' requirements.txt
 fi
+# Patch transformers import compatibility for older/newer version transitions
+if [ -f "llava/model/multimodal_projector/builder.py" ]; then
+    echo "Patching apply_chunking_to_forward import in builder.py..."
+    python3 -c '
+path = "llava/model/multimodal_projector/builder.py"
+with open(path, "r") as f:
+    text = f.read()
+if "apply_chunking_to_forward" in text:
+    text = text.replace("apply_chunking_to_forward,", "")
+    patch = "try:\n    from transformers.modeling_utils import apply_chunking_to_forward\nexcept ImportError:\n    from transformers.pytorch_utils import apply_chunking_to_forward\n"
+    text = patch + text
+    with open(path, "w") as f:
+        f.write(text)
+    print("Patch applied successfully!")
+'
+fi
 pip install -e .
 cd /workspace
 
