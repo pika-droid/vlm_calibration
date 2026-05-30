@@ -75,6 +75,22 @@ with open(path, "w") as f:
 print("builder.py compatibility patches applied successfully!")
 '
 fi
+# Patch llava_llama.py to support cache_position/kwargs in forward pass for transformers >= 4.39
+if [ -f "llava/model/language_model/llava_llama.py" ]; then
+    echo "Patching llava_llama.py forward signature to support newer transformers..."
+    python3 -c '
+path = "llava/model/language_model/llava_llama.py"
+with open(path, "r") as f:
+    text = f.read()
+if "return_dict: Optional[bool] = None," in text:
+    text = text.replace("return_dict: Optional[bool] = None,", "return_dict: Optional[bool] = None, **kwargs,")
+if "return_dict=return_dict" in text:
+    text = text.replace("return_dict=return_dict", "return_dict=return_dict, **kwargs")
+with open(path, "w") as f:
+    f.write(text)
+print("llava_llama.py patched successfully!")
+'
+fi
 pip install -e .
 cd /workspace
 
