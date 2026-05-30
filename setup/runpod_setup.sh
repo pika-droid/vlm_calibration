@@ -71,6 +71,7 @@ cd /workspace
 # ---------------------------------------------------------------------------
 echo "[4/7] Installing additional dependencies..."
 pip install \
+    "numpy<2.0" \
     sentence-transformers \
     matplotlib \
     seaborn \
