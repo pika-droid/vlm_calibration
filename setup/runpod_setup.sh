@@ -20,7 +20,7 @@ cd /workspace
 # ---------------------------------------------------------------------------
 if [ ! -d "venv" ]; then
     echo "[1/7] Creating virtual environment..."
-    python3 -m venv venv
+    python3 -m venv venv --system-site-packages
 else
     echo "[1/7] Virtual environment already exists, reusing."
 fi
@@ -38,6 +38,17 @@ else
     cd mqt-llava && git pull && cd ..
 fi
 cd mqt-llava
+# Relax strict torch/torchvision dependency pins to allow using the RunPod preinstalled PyTorch
+if [ -f "pyproject.toml" ]; then
+    echo "Relaxing torch & torchvision constraints in pyproject.toml..."
+    sed -i 's/"torch==2.1.2"/"torch>=2.1.2"/g' pyproject.toml
+    sed -i 's/"torchvision==0.16.2"/"torchvision>=0.16.2"/g' pyproject.toml
+fi
+if [ -f "requirements.txt" ]; then
+    echo "Relaxing torch & torchvision constraints in requirements.txt..."
+    sed -i 's/torch==2.1.2/torch>=2.1.2/g' requirements.txt
+    sed -i 's/torchvision==0.16.2/torchvision>=0.16.2/g' requirements.txt
+fi
 pip install -e .
 cd /workspace
 
