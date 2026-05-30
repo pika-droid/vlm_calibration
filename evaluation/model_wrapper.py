@@ -143,6 +143,9 @@ class MQTLLaVAWrapper:
                 qs = image_token_se + "\n" + question
             else:
                 qs = DEFAULT_IMAGE_TOKEN + "\n" + question
+        
+        # Append short answer instruction to match VQAv2 ground-truth annotations
+        qs = qs + "\nAnswer the question using a single word or phrase."
                 
         # Build prompt from conversation template
         conv = conv_templates[self.conv_mode].copy()
