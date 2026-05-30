@@ -10,8 +10,15 @@ Generates:
 from __future__ import annotations
 
 import json
+import logging
 import math
 from pathlib import Path
+
+# Configure matplotlib to use non-interactive Agg backend and suppress font warnings
+import matplotlib
+matplotlib.use("Agg")
+logging.getLogger("matplotlib.font_manager").setLevel(logging.ERROR)
+
 import matplotlib.pyplot as plt
 import numpy as np
 
