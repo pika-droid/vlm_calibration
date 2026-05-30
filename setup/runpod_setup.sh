@@ -117,6 +117,7 @@ pip install \
     "transformers<5.0.0" \
     "tokenizers<0.20.0" \
     "accelerate<1.0.0" \
+    "torchcodec==0.7.0" \
     sentence-transformers \
     matplotlib \
     seaborn \
