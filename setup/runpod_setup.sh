@@ -51,18 +51,28 @@ if [ -f "requirements.txt" ]; then
 fi
 # Patch transformers import compatibility for older/newer version transitions
 if [ -f "llava/model/multimodal_projector/builder.py" ]; then
-    echo "Patching apply_chunking_to_forward import in builder.py..."
+    echo "Patching apply_chunking_to_forward and pruning imports in builder.py..."
     python3 -c '
 path = "llava/model/multimodal_projector/builder.py"
 with open(path, "r") as f:
     text = f.read()
+
+# 1. Patch apply_chunking_to_forward
 if "apply_chunking_to_forward" in text:
     text = text.replace("apply_chunking_to_forward,", "")
-    patch = "try:\n    from transformers.modeling_utils import apply_chunking_to_forward\nexcept ImportError:\n    from transformers.pytorch_utils import apply_chunking_to_forward\n"
-    text = patch + text
-    with open(path, "w") as f:
-        f.write(text)
-    print("Patch applied successfully!")
+    patch_chunk = "try:\n    from transformers.modeling_utils import apply_chunking_to_forward\nexcept ImportError:\n    from transformers.pytorch_utils import apply_chunking_to_forward\n"
+    text = patch_chunk + text
+
+# 2. Patch find_pruneable_heads_and_indices and prune_linear_layer
+if "find_pruneable_heads_and_indices" in text:
+    text = text.replace("find_pruneable_heads_and_indices,", "")
+    text = text.replace("prune_linear_layer,", "")
+    patch_pruning = "try:\n    from transformers.modeling_utils import find_pruneable_heads_and_indices, prune_linear_layer\nexcept ImportError:\n    from transformers.pytorch_utils import find_pruneable_heads_and_indices, prune_linear_layer\n"
+    text = patch_pruning + text
+
+with open(path, "w") as f:
+    f.write(text)
+print("builder.py compatibility patches applied successfully!")
 '
 fi
 pip install -e .
@@ -88,6 +98,9 @@ cd /workspace
 echo "[4/7] Installing additional dependencies..."
 pip install \
     "numpy<2.0" \
+    "transformers<5.0.0" \
+    "tokenizers<0.20.0" \
+    "accelerate<1.0.0" \
     sentence-transformers \
     matplotlib \
     seaborn \
