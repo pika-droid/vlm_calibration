@@ -76,16 +76,53 @@ print("builder.py compatibility patches applied successfully!")
 '
 fi
 # Patch llava_llama.py to support cache_position/kwargs in forward pass for transformers >= 4.39
+# Adds cache_position explicitly to avoid "multiple values for keyword argument" error
 if [ -f "llava/model/language_model/llava_llama.py" ]; then
-    echo "Patching llava_llama.py forward signature to support newer transformers..."
+    echo "Patching llava_llama.py for newer transformers compatibility (idempotent)..."
     python3 -c '
+import re
 path = "llava/model/language_model/llava_llama.py"
 with open(path, "r") as f:
     text = f.read()
-if "return_dict: Optional[bool] = None," in text:
-    text = text.replace("return_dict: Optional[bool] = None,", "return_dict: Optional[bool] = None, **kwargs,")
-if "return_dict=return_dict" in text:
-    text = text.replace("return_dict=return_dict", "return_dict=return_dict, **kwargs")
+
+# Step 1: Clean up any corrupted duplicate **kwargs from previous patch runs
+text = re.sub(
+    r"(return_dict: Optional\[bool\] = None,)(\s*(cache_position[^,\n]*)?,?\s*\*\*kwargs,?)+",
+    r"\1\n        cache_position: Optional[torch.LongTensor] = None,\n        **kwargs,",
+    text
+)
+
+# Step 2: Idempotent — add cache_position + **kwargs to forward() signature
+# Only if neither is already present after return_dict
+if "cache_position: Optional[torch.LongTensor]" not in text:
+    text = re.sub(
+        r"(return_dict: Optional\[bool\] = None,)\s*\n(\s*\))",
+        r"\1\n        cache_position: Optional[torch.LongTensor] = None,\n        **kwargs,\n\2",
+        text
+    )
+
+# Step 3: Idempotent — pass cache_position explicitly in super().forward() call
+# Avoids it arriving twice (once explicit, once in **kwargs)
+if "cache_position=cache_position" not in text:
+    text = re.sub(
+        r"(return_dict=return_dict,?)\s*\n(\s*\*\*kwargs)",
+        r"\1\n            cache_position=cache_position,\n\2",
+        text
+    )
+
+# Step 4: If **kwargs not yet in super().forward() call at all, add it
+def add_kwargs_to_super(m):
+    line = m.group(0)
+    if "**kwargs" in line:
+        return line
+    return line.rstrip().rstrip(",") + ",\n            **{k: v for k, v in kwargs.items() if k != \"cache_position\"}"
+
+text = re.sub(
+    r"return_dict=return_dict,?\s*\n\s*\)",
+    add_kwargs_to_super,
+    text
+)
+
 with open(path, "w") as f:
     f.write(text)
 print("llava_llama.py patched successfully!")

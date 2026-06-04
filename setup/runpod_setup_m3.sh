@@ -91,6 +91,40 @@ with open(path, "w") as f:
 print("llava_llama.py patched successfully!")
 '
 fi
+# Patch llava/__init__.py to guard eager model import that fails on newer transformers
+if [ -f "llava/__init__.py" ]; then
+    echo "Patching llava/__init__.py to guard LlavaLlamaForCausalLM import..."
+    python3 -c '
+path = "llava/__init__.py"
+with open(path, "r") as f:
+    text = f.read()
+if "from .model import LlavaLlamaForCausalLM" in text:
+    text = text.replace(
+        "from .model import LlavaLlamaForCausalLM",
+        "try:\n    from .model import LlavaLlamaForCausalLM\nexcept (ImportError, Exception):\n    pass"
+    )
+with open(path, "w") as f:
+    f.write(text)
+print("llava/__init__.py patched successfully!")
+'
+fi
+# Patch llava/model/__init__.py to guard language model import
+if [ -f "llava/model/__init__.py" ]; then
+    echo "Patching llava/model/__init__.py to guard LlavaLlamaForCausalLM import..."
+    python3 -c '
+path = "llava/model/__init__.py"
+with open(path, "r") as f:
+    text = f.read()
+if "from .language_model.llava_llama import LlavaLlamaForCausalLM" in text:
+    text = text.replace(
+        "from .language_model.llava_llama import LlavaLlamaForCausalLM",
+        "try:\n    from .language_model.llava_llama import LlavaLlamaForCausalLM\nexcept (ImportError, Exception):\n    pass"
+    )
+with open(path, "w") as f:
+    f.write(text)
+print("llava/model/__init__.py patched successfully!")
+'
+fi
 pip install -e .
 cd /workspace
 
