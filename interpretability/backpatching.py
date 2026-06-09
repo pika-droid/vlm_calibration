@@ -16,6 +16,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import torch
+from typing import Any
 
 # Configure matplotlib for headless generation
 import matplotlib
@@ -41,7 +42,7 @@ from latent_lens import compute_ece
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
-logger = logging.getLogger("VLM_Backpatching")
+logger = logging.getLogger("VLM_Interpretability.backpatching")
 
 
 def set_premium_style() -> None:
@@ -155,7 +156,7 @@ class BackpatchExperiment:
         return ans
 
 
-def run_backpatching_experiment(input_dir: str, num_samples: int = 50) -> None:
+def run_backpatching_experiment(input_dir: str, num_samples: int = 50, model_path: str = "/workspace/models/llava-v1.5-7b-m3") -> None:
     """Runs a grid back-patching experiment on a small subset of the pilot data."""
     set_premium_style()
     
@@ -217,7 +218,7 @@ def run_backpatching_experiment(input_dir: str, num_samples: int = 50) -> None:
     logger.info("Loading model for two-pass back-patching...")
     # Mocking check: if running locally, we check if model path exists
     # If not, we fall back to generating mockup results
-    model_path = "/workspace/models/llava-v1.5-7b-m3"
+    model_path = model_path
     if not os.path.exists(model_path):
         logger.warning(f"Model path {model_path} not found. Running in mock visualization mode.")
         _generate_mock_plots(plots_dir)
@@ -351,7 +352,7 @@ def _plot_heatmaps(summary_df: pd.DataFrame, plots_dir: Path) -> None:
     plt.xlabel("Destination Layer (L_dest)")
     plt.ylabel("Source Layer (L_source)")
     plt.tight_layout()
-    plt.savefig(plots_dir / "backpatching_ece.png")  # Saving file name matching verify script requirements
+    plt.savefig(plots_dir / "backpatching_flip_rate.png")
     plt.close()
     
     logger.info(f"Back-patching heatmaps saved to: {plots_dir}")
@@ -386,6 +387,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run Visual Activation Back-patching experiments.")
     parser.add_argument("--input-dir", type=str, default="results/pilot-interpretability")
     parser.add_argument("--num-samples", type=int, default=50)
+    parser.add_argument("--model-path", type=str, default="/workspace/models/llava-v1.5-7b-m3")
     args = parser.parse_args()
     
-    run_backpatching_experiment(args.input_dir, args.num_samples)
+    run_backpatching_experiment(args.input_dir, args.num_samples, args.model_path)

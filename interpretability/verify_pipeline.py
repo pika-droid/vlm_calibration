@@ -120,27 +120,19 @@ mock_datasets.load_dataset = MagicMock(return_value=mock_dataset_obj)
 sys.modules["datasets"] = mock_datasets
 
 
-# 3. Define Mock Model Wrapper for Hooks
-from dataclasses import dataclass
+# Add evaluation-m3 and interpretability package to system path early
+root_path = Path(__file__).resolve().parent.parent
+eval_m3_path = root_path / "evaluation-m3"
+if str(eval_m3_path) not in sys.path:
+    sys.path.insert(0, str(eval_m3_path))
+if str(root_path) not in sys.path:
+    sys.path.insert(0, str(root_path))
+
+# 3. Import TokenMap and HookOutput from extract_hooks to prevent duplicate definitions
+from interpretability.extract_hooks import TokenMap, HookOutput
+
 from typing import Generator
 from contextlib import contextmanager
-
-@dataclass
-class TokenMap:
-    image_start: int
-    image_end: int
-    question_start: int
-    question_end: int
-    answer_start: int
-    answer_end: int
-
-@dataclass
-class HookOutput:
-    hidden_states: dict[int, torch.Tensor]
-    attention_weights: dict[int, torch.Tensor]
-    token_map: TokenMap
-    generated_text: str
-    logits: torch.Tensor
 
 
 class MockHookedM3Wrapper:
@@ -231,14 +223,6 @@ class MockHookedM3Wrapper:
             logits=torch.randn(32000)
         )
 
-
-# Add evaluation-m3 and interpretability package to system path
-root_path = Path(__file__).resolve().parent.parent
-eval_m3_path = root_path / "evaluation-m3"
-if str(eval_m3_path) not in sys.path:
-    sys.path.insert(0, str(eval_m3_path))
-if str(root_path) not in sys.path:
-    sys.path.insert(0, str(root_path))
 
 # Import the actual interpretability modules
 from config import EvalConfig
@@ -389,7 +373,7 @@ def main() -> None:
         plots_dir / "layer_confidence_evolution.png",
         plots_dir / "temperature_scaling_comparison.png",
         plots_dir / "backpatching_results.png",
-        plots_dir / "backpatching_ece.png",
+        plots_dir / "backpatching_flip_rate.png",
         plots_dir / "attention_map_comparison_1000.png",
         plots_dir / "attention_map_comparison_1001.png"
     ]

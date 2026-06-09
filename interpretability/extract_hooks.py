@@ -21,6 +21,7 @@ if str(eval_m3_path) not in sys.path:
 
 from model_wrapper import M3LLaVAWrapper
 from config import EvalConfig
+from llava.mm_utils import tokenizer_image_token
 
 # Constants for LLaVA tokens
 IMAGE_TOKEN_INDEX = -200
@@ -63,6 +64,19 @@ class InterpConfig(EvalConfig):
         "stable_incorrect_relaxed": 200,
         "flip": 200,
     })
+
+    def __post_init__(self) -> None:
+        """Resolve pilot directories relative to project root without mutating parent paths."""
+        import os
+        cpu_count = os.cpu_count()
+        if cpu_count is not None:
+            self.num_workers = min(self.num_workers, max(1, cpu_count // 2))
+            
+        project_root = Path(__file__).resolve().parent.parent
+        if not Path(self.pilot_output_dir).is_absolute():
+            self.pilot_output_dir = str(project_root / self.pilot_output_dir)
+        if not Path(self.source_results_jsonl).is_absolute():
+            self.source_results_jsonl = str(project_root / self.source_results_jsonl)
 
 
 class HookedM3Wrapper(M3LLaVAWrapper):
@@ -214,8 +228,10 @@ class HookedM3Wrapper(M3LLaVAWrapper):
         image_tensor, image_sizes = self.preprocess_image(image)
         
         # Run inference using the cached generator block, passing output_attentions=True
-        # We register hooks before the forward execution
-        self.register_hooks(hook_layers, capture_hidden=True, capture_attention=True)
+        # We register hooks before the forward execution if not already active
+        was_registered = len(self._hooks) > 0
+        if not was_registered:
+            self.register_hooks(hook_layers, capture_hidden=True, capture_attention=True)
         
         with torch.amp.autocast(str(self.device), dtype=self.dtype):
             outputs = self.model.generate(
@@ -263,7 +279,15 @@ class HookedM3Wrapper(M3LLaVAWrapper):
         captured_hidden = {k: v for k, v in self._captured_hidden.items()}
         captured_attn = {k: v for k, v in self._captured_attention.items()}
         
-        self.remove_hooks()
+        # Warning if attention is not captured but expected
+        if not captured_attn:
+            import logging
+            logging.getLogger("VLM_Interpretability").warning(
+                "Attention weights were not captured. Attention hooks may capture nothing if output_attentions=True is not active or supported by the decoder layers."
+            )
+        
+        if not was_registered:
+            self.remove_hooks()
         
         # Extract raw logit tensor at the last step
         logits = outputs.scores[-1][0].detach().cpu()

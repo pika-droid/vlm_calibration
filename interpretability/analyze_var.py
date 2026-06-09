@@ -26,7 +26,7 @@ import seaborn as sns
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
-logger = logging.getLogger("VLM_VAR_Analysis")
+logger = logging.getLogger("VLM_Interpretability.var_analysis")
 
 
 def set_premium_style() -> None:
@@ -203,8 +203,8 @@ def evaluate_var_diagnostics(input_dir: str, target_layers: list[int] | None = N
         # Mann-Whitney U Test
         u_stat, p_val = numpy_mannwhitneyu(c_var, i_var)
         
-        # Cohen's d effect size
-        cohen_d = (np.mean(c_var) - np.mean(i_var)) / np.sqrt((np.var(c_var) + np.var(i_var)) / 2.0 + 1e-8)
+        # Cohen's d effect size using sample variance
+        cohen_d = (np.mean(c_var) - np.mean(i_var)) / np.sqrt((np.var(c_var, ddof=1) + np.var(i_var, ddof=1)) / 2.0 + 1e-8)
         
         logger.info("=== Visual Attention Ratio (VAR) statistical diagnostics ===")
         logger.info(f"Stable Correct mean VAR:            {np.mean(c_var):.4f}")

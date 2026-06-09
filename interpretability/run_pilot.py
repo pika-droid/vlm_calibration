@@ -20,6 +20,7 @@ import random
 import logging
 import torch
 import numpy as np
+from typing import Any
 from pathlib import Path
 from PIL import Image
 from tqdm import tqdm
@@ -44,7 +45,7 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(message)s",
     handlers=[logging.StreamHandler(sys.stdout)]
 )
-logger = logging.getLogger("VLM_Interpretability")
+logger = logging.getLogger("VLM_Interpretability.pilot")
 
 
 def classify_sample_strata(results_by_m: dict[str, Any]) -> str | None:
@@ -60,7 +61,7 @@ def classify_sample_strata(results_by_m: dict[str, Any]) -> str | None:
             ans = res.get("answer", "").strip().lower()
             if acc is not None:
                 accuracies.append(acc)
-            answers.append(ans)
+                answers.append(ans)
 
     if not accuracies:
         return None
@@ -366,9 +367,15 @@ def run_pilot_inference(config: InterpConfig, selected_samples: dict[str, list[i
                         model_wrapper=wrapper
                     )
                     
+                    # Calculate VQA accuracy dynamically
+                    pred_ans = hook_output.generated_text.strip().lower()
+                    gt_answers_clean = [ans.strip().lower() for ans in gt_answers]
+                    vqa_acc = min(gt_answers_clean.count(pred_ans) / 3.0, 1.0)
+
                     # Store results for this scale
                     results_by_m[str(m)] = {
                         "answer": hook_output.generated_text,
+                        "vqa_accuracy": vqa_acc,
                         "var_by_layer": var_stats,
                         "logit_lens_by_layer": logit_lens_stats,
                         "token_map": {

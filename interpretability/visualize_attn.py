@@ -40,7 +40,7 @@ from extract_hooks import HookedM3Wrapper, HookOutput, TokenMap
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
-logger = logging.getLogger("VLM_Attention_Viz")
+logger = logging.getLogger("VLM_Interpretability.attn_viz")
 
 
 def set_premium_style() -> None:
@@ -71,6 +71,7 @@ def extract_spatial_attention(mean_attn: torch.Tensor, token_map: TokenMap, scal
     
     # Reshape to square 2D grid
     side = int(np.sqrt(scale))
+    assert side * side == scale, f"Scale {scale} is not a perfect square"
     grid_2d = grid_attn.reshape((side, side))
     
     # Normalize grid for visualization
@@ -137,7 +138,7 @@ def plot_attention_comparison(
     plt.close()
 
 
-def generate_attention_maps(input_dir: str, num_examples: int = 5) -> None:
+def generate_attention_maps(input_dir: str, num_examples: int = 5, model_path: str = "/workspace/models/llava-v1.5-7b-m3") -> None:
     """Main execution block to generate attention overlays."""
     plots_dir = Path(input_dir) / "plots"
     plots_dir.mkdir(parents=True, exist_ok=True)
@@ -182,7 +183,7 @@ def generate_attention_maps(input_dir: str, num_examples: int = 5) -> None:
         return
 
     # Load model wrapper
-    model_path = "/workspace/models/llava-v1.5-7b-m3"
+    model_path = model_path
     if not os.path.exists(model_path):
         logger.warning(f"Model checkpoint not found at {model_path}. Generating mockup visualizer files.")
         _generate_mockup_visualizer(plots_dir, num_examples)
@@ -277,6 +278,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Visualize attention map scaling for pilot subset.")
     parser.add_argument("--input-dir", type=str, default="results/pilot-interpretability")
     parser.add_argument("--num-examples", type=int, default=5)
+    parser.add_argument("--model-path", type=str, default="/workspace/models/llava-v1.5-7b-m3")
     args = parser.parse_args()
     
-    generate_attention_maps(args.input_dir, args.num_examples)
+    generate_attention_maps(args.input_dir, args.num_examples, args.model_path)

@@ -27,7 +27,7 @@ import seaborn as sns
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
-logger = logging.getLogger("VLM_LatentLens")
+logger = logging.getLogger("VLM_Interpretability.latent_lens")
 
 
 def set_premium_style() -> None:
@@ -145,8 +145,12 @@ def evaluate_calibration(input_dir: str) -> None:
                 if "error" in m_data or "logit_lens_by_layer" not in m_data:
                     continue
                     
-                final_ans = m_data.get("answer", "").strip().lower()
-                is_correct = int(final_ans in gt_answers)
+                # H5: Use vqa_accuracy >= 0.5 for correctness if available, else fallback to in check
+                if "vqa_accuracy" in m_data:
+                    is_correct = int(m_data["vqa_accuracy"] >= 0.5)
+                else:
+                    final_ans = m_data.get("answer", "").strip().lower()
+                    is_correct = int(final_ans in gt_answers)
                 
                 # Check layers
                 logit_lens = m_data["logit_lens_by_layer"]
