@@ -4,6 +4,11 @@ This repository contains the evaluation harness and visualization pipeline for i
 
 ---
 
+> [!NOTE]
+> For evaluation specifically adapted to **M3-LLaVA** (elastic visual scales), please refer to [evaluation-m3/README.md](./evaluation-m3/README.md) for its configuration, usage, and oracle sequential calibration tool.
+
+---
+
 ## What Has Been Done
 
 ### 1. Multi-Scale Evaluation Loop & Setup
@@ -40,22 +45,29 @@ This repository contains the evaluation harness and visualization pipeline for i
 
 ```
 .
-├── evaluation/
-│   ├── config.py                 # Evaluation parameters and settings
-│   ├── model_wrapper.py          # Wrapper for MQT-LLaVA loading and inference
-│   ├── load_vqav2.py             # Dataset inspector script
-│   ├── smoke_test.py             # Sanity check for token sweeps
-│   ├── verify_pipeline.py        # CPU-only mock verification pipeline
-│   └── multi_scale_harness.py    # Main evaluation harness
+├── evaluation/                   # Base calibration evaluation harness (MQT-LLaVA)
+│   ├── config.py
+│   ├── model_wrapper.py
+│   ├── load_vqav2.py
+│   ├── smoke_test.py
+│   ├── verify_pipeline.py
+│   └── multi_scale_harness.py
+├── evaluation-m3/                # Multi-scale evaluation for M3-LLaVA
+│   ├── config.py
+│   ├── model_wrapper.py
+│   ├── load_vqav2.py
+│   ├── smoke_test.py
+│   ├── verify_pipeline.py
+│   ├── multi_scale_harness.py
+│   ├── calibrate_oracle.py       # Oracle sequential calibration post-processing
+│   └── visualization/            # Visualization scripts for M3-LLaVA
 ├── setup/
 │   └── runpod_setup.sh           # RunPod dependency setup script
-├── visualization/
-│   ├── variance_plots.py         # Histograms & variance markdown summaries
-│   ├── reliability_diagram.py    # Calibration reliability plots (8 panels)
-│   └── ece_summary.py            # ECE comparison charts
-├── .gitignore                    # Local environment and cache exclusions
+├── visualization/                # Base visualization scripts
+├── .gitignore
 └── README.md                     # Project documentation
 ```
+
 
 ---
 

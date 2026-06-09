@@ -31,10 +31,12 @@ evaluation-m3/
 ├── smoke_test.py                # Quick sanity check on a single VQAv2 sample
 ├── load_vqav2.py                # Dataset loading helpers
 ├── verify_pipeline.py           # End-to-end pipeline verification script
+├── calibrate_oracle.py          # Oracle-weighted calibration analysis runner
 └── visualization/
     ├── reliability_diagram.py   # Reliability diagrams and ECE/MCE per token depth
     ├── variance_plots.py        # Confidence and stability variance plots across scales
     └── ece_summary.py           # ECE summary bar chart across all token depths
+
 ```
 
 ---
@@ -104,6 +106,19 @@ python -m evaluation-m3.visualization.variance_plots
 # ECE summary
 python -m evaluation-m3.visualization.ece_summary
 ```
+
+### Oracle-Weighted Calibration (Sequential Optimization)
+
+Process raw token-sweep results to simulate a sequential oracle-updating scheme:
+```bash
+python -m evaluation-m3.calibrate_oracle \
+    --input-file results/vlm-calibration-m3/results/multi_scale_results.jsonl \
+    --output-dir results/m3-weighted-confidence \
+    --beta 1.0 \
+    --penalize-new
+```
+*Note: This will perform post-hoc temperature/sequential scaling and output ECE/MCE metrics comparisons, reliability diagrams, and comparison markdown tables.*
+
 
 ---
 
@@ -222,9 +237,9 @@ python -m evaluation-m3.multi_scale_harness --subset-size <N>
 
 ## Output Files
 
-After a run, the following files are produced:
+After a run and post-processing, the following files are produced:
 
-| File | Description |
+| File / Folder | Description |
 |---|---|
 | `results/multi_scale_results.jsonl` | One JSON line per sample with full per-scale results |
 | `results/summary_statistics.csv` | Flat CSV with per-sample stats for all token depths |
@@ -233,3 +248,5 @@ After a run, the following files are produced:
 | `plots/variance_*.png` | Confidence and accuracy variance plots across scales |
 | `plots/ece_summary.png` | ECE summary bar chart across all token depths |
 | `logs/evaluation.log` | Full run log with timestamps |
+| `results/m3-weighted-confidence/` | **[Oracle Calibration]** Folder containing calibrated JSONL, summary statistics CSV, and ECE/MCE reduction comparison plots/reliability diagrams |
+
