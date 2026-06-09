@@ -116,5 +116,6 @@ Under `results/pilot-interpretability/plots/`:
 | `layer_confidence_evolution.png` | Confidence buildup trajectory across decoder layers |
 | `temperature_scaling_comparison.png` | Fitted temperature parameter $T$ values per layer |
 | `backpatching_results.png` | Heatmap of accuracy shift per source-destination combination |
-| `backpatching_ece.png` | Heatmap of answer modification rate |
+| `backpatching_flip_rate.png` | Heatmap of answer modification rate |
 | `attention_map_comparison_{qid}.png` | Overlaid attention heatmaps on original image across the 5 scales |
+
