@@ -1,152 +1,120 @@
-# VLM Calibration: Matryoshka Visual Tokens & Confidence Estimation
+# interpretability
 
-This repository contains the evaluation harness and visualization pipeline for investigating uncertainty calibration in Vision-Language Models (VLMs), specifically focusing on elastic visual token configurations using the **Matryoshka Query Transformer LLaVA (MQT-LLaVA)**.
-
----
-
-## What Has Been Done
-
-### 1. Multi-Scale Evaluation Loop & Setup
-* **Environment Provisioning**: Created `setup/runpod_setup.sh` to fully configure dependencies (lmms-eval, mqt-llava, sentence-transformers, etc.) inside RunPod's persistent volume.
-- **Harness Implementation**: Built `evaluation/multi_scale_harness.py` to sweep across visual token depths ($m \in [2, 4, 8, 16, 36, 64, 144, 256]$) per sample.
-- **Backwards Compatibility & Checkpointing**: Added robust checkpointing (`results/multi_scale_results.jsonl`) to support resuming interrupted sweeps. Added support for unlabeled splits (like test splits) where ground-truth answers are missing.
-- **Intermediate Updates & Snapshots**: Added hooks to automatically update the live visualizations every 500 samples (`checkpoint_interval`), and create archived snapshots (figures, markdown table, ECE bar chart, and snapshot copy of CSV statistics) in unique folders (e.g. `plots/snapshot_10000/`) every 10k samples (`archive_interval`).
-- **Configurability**: Structured settings within `evaluation/config.py`.
-
-### 2. PyTorch & RunPod Optimizations
-* **Image & Token Caching (`sweep_optimized`)**: Reduced image preprocessing (PIL -> Tensor conversion) and prompt tokenization frequency from 8 times per sample to **exactly once**.
-* **Mixed Precision (`torch.amp.autocast`)**: Implemented half-precision contexts for faster Tensor Core execution on NVIDIA GPUs.
-* **Resampler Compilation (`torch.compile`)**: Applied JIT compilation with `dynamic=True` and `mode="reduce-overhead"` to MQT-LLaVA's query abstractor module.
-* **VRAM and CPU Pinning**: Pinned the sentence embeddings model (`SentenceTransformer`) to CPU to conserve GPU VRAM for the 7B LLM. Optimized dataloader parameters (`pin_memory=True`, `prefetch_factor=2`) and dynamically scale dataloader threads (`num_workers` set to half of available vCPUs) to fit your RunPod's hardware footprint.
-* **Reproducibility**: All random seeds (`torch`, `CUDA`, `numpy`, `random`, `cudnn.deterministic`) are set via `set_seed(config.seed)` at the start of each evaluation run, following PyTorch best practices.
-
-> **Security Note**: MQT-LLaVA's `load_pretrained_model()` internally calls `torch.load()` without `weights_only=True`. This is inherited from the upstream LLaVA codebase. Only load model checkpoints from trusted sources (e.g. the official HuggingFace repo `gordonhu/MQT-LLaVA-7b`).
-
-### 3. Visualizations & Analytical Tools
-- **Visual Variance Profiling**: Updates `visualization/variance_plots.py` to retrieve target PIL Images from the dataset, generate dual-panel stability plots (source image side-by-side with a detailed token-sweep results table), and embeds them directly inside `variance_gallery.md`.
-- **Reliability Diagrams**: Generates 8-panel empirical accuracy vs confidence calibration charts (`visualization/reliability_diagram.py`).
-- **ECE Summary**: Compares Expected Calibration Error (ECE) across different scale selections to visualize how calibration changes under token reduction (`visualization/ece_summary.py`).
+Interpretability and mid-layer diagnostics package for **M3-LLaVA** (Matryoshka Multimodal Model), branched from `m3-test`. This suite extracts hidden states, token attention weights, and maps intermediate calibration/interpretability features across visual scales ($m \in [1, 9, 36, 144, 576]$) on a representative 1,000-sample pilot subset of VQAv2.
 
 ---
 
-## What Has Been Deferred
+## Overview
 
-- **Full Vision Tower Caching**: The vision encoder (ViT) forward pass still runs inside `model.generate()` for each token scale sweep step. Since it operates on the full image, it produces the same visual features. Fully caching these features requires overriding MQT-LLaVA's internal multimodal embedding layers. The simpler caching approach (tensors and prompt tokenization) was prioritized for safety and compatibility.
-- **Distributed/Multi-GPU Batching**: The current harness evaluates sequentially (batch size 1) to ensure precision and compatibility with variable-length outputs. Distributed evaluation (via PyTorch DDP or HuggingFace Accelerate) is deferred.
+Modern VLMs like M3-LLaVA exhibit answer shift and potential hallucinations when visual token scale is compressed. This diagnostics suite implements four advanced mechanistic interpretability techniques to probe the model's internal representation space across scales:
+
+1. **Visual Attention Ratio (VAR):** Measures the relative attention weight allocated to visual tokens versus text query tokens in middle layers (layers 5–18) to identify hallucinations.
+2. **Intermediate Softmax Calibration (LogitLens):** Projects intermediate hidden states $\mathbf{h}^{(\ell)}$ directly to the vocabulary using the language model head, evaluating calibration quality (ECE) across layers.
+3. **Activation Back-patching:** A training-free intervention that records visual token key/value states in later layers (e.g., layer 24) and patches them into earlier layers (e.g., layer 10) to evaluate accuracy and calibration recovery.
+4. **Attention Map Overlays:** Renders 2D spatial attention grids of the generated response token over the input image across all 5 scales.
 
 ---
 
-## Project Structure
+## Directory Structure
 
 ```
-.
-├── evaluation/
-│   ├── config.py                 # Evaluation parameters and settings
-│   ├── model_wrapper.py          # Wrapper for MQT-LLaVA loading and inference
-│   ├── load_vqav2.py             # Dataset inspector script
-│   ├── smoke_test.py             # Sanity check for token sweeps
-│   ├── verify_pipeline.py        # CPU-only mock verification pipeline
-│   └── multi_scale_harness.py    # Main evaluation harness
-├── setup/
-│   └── runpod_setup.sh           # RunPod dependency setup script
-├── visualization/
-│   ├── variance_plots.py         # Histograms & variance markdown summaries
-│   ├── reliability_diagram.py    # Calibration reliability plots (8 panels)
-│   └── ece_summary.py            # ECE comparison charts
-├── .gitignore                    # Local environment and cache exclusions
-└── README.md                     # Project documentation
+interpretability/
+├── __init__.py
+├── extract_hooks.py      # HookedM3Wrapper: PyTorch forward hooks manager
+├── run_pilot.py          # Pilot selection (4 strata) and inference runner
+├── analyze_var.py        # Visual Attention Ratio (VAR) evaluation and plot generation
+├── latent_lens.py        # LogitLens projection, ECE tracking, and temp scaling
+├── backpatching.py       # Activation back-patching experiment grid and heatmaps
+├── visualize_attn.py     # 2D attention heatmap overlay visualizer
+└── verify_pipeline.py    # Local CPU-only end-to-end mock verification script
 ```
 
 ---
 
-## Local / CPU-only Verification (No GPU Required)
+## Strata Definition & Selection
 
-If you do not have a GPU locally or do not want to download the multi-gigabyte models and VQAv2 dataset, you can run the mock-based verification pipeline to verify that the evaluation harness, statistics compilation, and plotting tools execute correctly:
+The pilot subset of **1,000 samples** is selected using a seeded (`seed=42`) stratified sample over the full 67,583-sample VQAv2 evaluation results:
 
-1. **Create and Activate a Local Virtual Environment**:
-   ```bash
-   python -m venv venv_local
-   # On Windows:
-   venv_local\Scripts\activate.bat
-   # On macOS/Linux:
-   source venv_local/bin/activate
-   ```
-
-2. **Install Lightweight Dependencies**:
-   ```bash
-   pip install torch --index-url https://download.pytorch.org/whl/cpu
-   pip install datasets sentence-transformers matplotlib pandas seaborn tqdm Pillow
-   ```
-
-3. **Run the Verification Script**:
-   ```bash
-   python -m evaluation.verify_pipeline
-   ```
-
-This mock pipeline executes the harness over synthetic samples, compiles summary statistics, and runs all 3 visualization generators. The generated test outputs and charts will be saved under the `test_run_output/` directory for inspection.
+| Stratum | Definition | Count | Diagnostic Goal |
+|---|---|---|---|
+| **Stable Correct** | Accuracy $\ge 0.5$ at all 5 scales | 400 | Baseline for optimal representation space |
+| **Stable Incorrect (Strict)** | Accuracy $< 0.5$ at all scales, identical answer string | 200 | Probes stable failure modes/hallucinations |
+| **Stable Incorrect (Relaxed)** | Accuracy $< 0.5$ at all scales, answer changes | 200 | Probes high-uncertainty failure modes |
+| **Flip** | Accuracy $\ge 0.5$ at some scales, $< 0.5$ at others | 200 | Probes scale-dependent instability |
 
 ---
 
-## How to Use in RunPod
+## Interpretability Metrics
 
-To run this pipeline on a RunPod instance (e.g. RTX A6000 with the **PyTorch 2.8 + CUDA 12.8** template):
+### 1. Visual Attention Ratio (VAR)
+Defined for a decoder layer $\ell$ as:
+$$\text{VAR}^{(\ell)} = \frac{\sum \text{Attention}(\text{Answer Token} \rightarrow \text{Image Tokens})}{\sum \text{Attention}(\text{Answer Token} \rightarrow \text{Text Tokens})}$$
+Calculated across layers 5–18. Correct stable answers show a significantly higher VAR than wrong stable answers.
 
-### 1. Initialize the VM Environment
-Navigate to your `/workspace` volume and pull the latest changes, then run the setup script to provision paths and build library wrappers:
+### 2. LogitLens & Temperature Scaling
+Hidden state $\mathbf{h}^{(\ell)}$ at the final prefill token position is projected as:
+$$\mathbf{p}^{(\ell)} = \text{softmax}\left(\text{LM\_Head}(\text{RMSNorm}(\mathbf{h}^{(\ell)}))\right)$$
+We compute Expected Calibration Error (ECE) on $\mathbf{p}^{(\ell)}$. Since we capture only top-1 confidence $p$, we run post-hoc temperature scaling using a binary log-odds logit:
+$$z = \log\left(\frac{p}{1-p}\right) \quad \rightarrow \quad p_{\text{scaled}} = \sigma\left(\frac{z}{T}\right)$$
+We fit $T$ by minimizing Negative Log-Likelihood (NLL).
+
+### 3. Activation Back-patching
+We execute two-pass inference:
+* **Pass 1:** Run inference normally, caching visual token hidden states at layer $L_{\text{source}}$.
+* **Pass 2:** Re-run inference, placing a forward hook at layer $L_{\text{dest}}$ that overrides the visual token hidden states with the cached representations.
+
+---
+
+## Usage
+
+### 1. Local CPU Verification (End-to-End Mock Run)
+Verify the entire pipeline's logic, mathematics, shape compatibility, and plotting without loading weights or requiring GPU VRAM:
 ```bash
-cd /workspace
-git pull origin main
-bash setup/runpod_setup.sh
+python -m interpretability.verify_pipeline
 ```
 
-### 2. Activate the Virtual Environment
+### 2. Stratified Pilot Extraction (GPU required)
+Select the 1,000 pilot samples and run inference with active hooks, extracting VAR and LogitLens statistics:
 ```bash
-source /workspace/venv/bin/activate
+python -m interpretability.run_pilot --model-path /workspace/models/llava-v1.5-7b-m3 \
+    --source-results results/vlm-calibration-m3/results/multi_scale_results.jsonl \
+    --output-dir results/pilot-interpretability
 ```
-
-### 3. Run the Smoke Test
-Verify that the model wrapper, tokenizer, and confidence extraction are functional on the GPU:
+*Note: Debug mode is supported for quick GPU testing on a single sample:*
 ```bash
-python -m evaluation.smoke_test
+python -m interpretability.run_pilot --debug --sample-idx 0
 ```
 
-### 4. Launch the Evaluation Harness
-You can run a quick check on a subset, or launch the full long-running evaluation loop in the background:
-
-* **Foreground subset run (e.g., 500 samples)**:
-  ```bash
-  python -m evaluation.multi_scale_harness --subset-size 500
-  ```
-
-* **Background full evaluation run (recommended)**:
-  Since the harness automatically logs timestamps and milestones to `logs/evaluation.log`, you can run it in the background to ensure it continues even if your terminal session disconnects:
-  ```bash
-  nohup python -m evaluation.multi_scale_harness > logs/terminal.log 2>&1 &
-  ```
-
-* **Monitor run status**:
-  Watch high-level milestones:
-  ```bash
-  tail -f /workspace/vlm-calibration/logs/evaluation.log
-  ```
-  Watch detailed terminal outputs:
-  ```bash
-  tail -f /workspace/vlm-calibration/logs/terminal.log
-  ```
-
-*Note: The harness supports automated checkpointing and recovery. If interrupted, simply relaunching the harness command will detect existing records in `multi_scale_results.jsonl` and resume progress.*
-
-### 5. Generate Calibration and Stability Plots
-Compile results to generate diagrams, charts, and markdown summaries:
+### 3. Run Interpretability Diagnostics
+Analyze the captured statistics and generate plots:
 ```bash
-# Generate variance distribution and markdown galleries
-python -m visualization.variance_plots
+# 1. Analyze VAR classification capacity
+python -m interpretability.analyze_var --input-dir results/pilot-interpretability
 
-# Generate reliability diagrams with ECE metrics
-python -m visualization.reliability_diagram
+# 2. Analyze LogitLens calibration and ECE per layer
+python -m interpretability.latent_lens --input-dir results/pilot-interpretability
 
-# Create ECE bar chart summary
-python -m visualization.ece_summary
+# 3. Execute the back-patching experiment grid
+python -m interpretability.backpatching --input-dir results/pilot-interpretability --num-samples 50
+
+# 4. Generate 2D spatial attention overlays
+python -m interpretability.visualize_attn --input-dir results/pilot-interpretability --num-examples 10
 ```
-Generated charts and comparison tables will be saved under `/workspace/vlm-calibration/plots/`.
 
+---
+
+## Output Plots
+
+Under `results/pilot-interpretability/plots/`:
+
+| Plot | Description |
+|---|---|
+| `var_distribution.png` | Violin plots showing VAR values across the 4 strata |
+| `var_roc_curve.png` | ROC curve of VAR as a classifier for stable correctness |
+| `var_by_layer.png` | Trajectory of VAR values across layers 5–18 |
+| `intermediate_ece_curve.png` | ECE bar charts per decoder layer (raw vs temperature scaled) |
+| `layer_confidence_evolution.png` | Confidence buildup trajectory across decoder layers |
+| `temperature_scaling_comparison.png` | Fitted temperature parameter $T$ values per layer |
+| `backpatching_results.png` | Heatmap of accuracy shift per source-destination combination |
+| `backpatching_ece.png` | Heatmap of answer modification rate |
+| `attention_map_comparison_{qid}.png` | Overlaid attention heatmaps on original image across the 5 scales |
