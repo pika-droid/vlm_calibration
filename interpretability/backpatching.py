@@ -224,7 +224,7 @@ def run_backpatching_experiment(input_dir: str, num_samples: int = 50, model_pat
         _generate_mock_plots(plots_dir)
         return
 
-    wrapper = HookedM3Wrapper(model_path=model_path, precision="fp16")
+    wrapper = HookedM3Wrapper(model_path=model_path, precision="bf16")  # RTX A4000: Ampere bf16
     exp = BackpatchExperiment(wrapper)
 
     # Grid parameters
@@ -287,6 +287,11 @@ def run_backpatching_experiment(input_dir: str, num_samples: int = 50, model_pat
                 except Exception as e:
                     logger.error(f"Error on Pass 2 (QID {qid}, dest {dest}): {e}")
                     continue
+
+            # Clear CUDA cache between source-layer iterations to bound VRAM
+            # usage from two-pass inference (record + patch) on A4000 16 GB.
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
 
     if not grid_results:
         logger.error("No experimental grid results were generated.")

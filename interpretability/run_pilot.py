@@ -322,7 +322,7 @@ def run_pilot_inference(config: InterpConfig, selected_samples: dict[str, list[i
     logger.info("Loading model and tokenizer...")
     wrapper = HookedM3Wrapper(
         model_path=config.model_path,
-        precision="fp16"
+        precision="bf16"   # RTX A4000: bf16 is Ampere-native, same VRAM as fp16
     )
 
     # Open result file in append or write mode
@@ -407,6 +407,14 @@ def run_pilot_inference(config: InterpConfig, selected_samples: dict[str, list[i
             # Write to output file
             out_f.write(json.dumps(sample_result) + "\n")
             out_f.flush()
+
+            # Release any CUDA allocator fragments that built up during the
+            # 5-scale sweep for this sample.  On A4000 (16 GB) this prevents
+            # OOM on long runs with output_attentions=True (attn maps can be
+            # large at m=576 with 32 heads × (576+ctx)^2 tokens).
+            if torch.cuda.is_available():
+                torch.cuda.synchronize()
+                torch.cuda.empty_cache()
 
     logger.info(f"Pilot run completed. Results saved to {results_file}")
 

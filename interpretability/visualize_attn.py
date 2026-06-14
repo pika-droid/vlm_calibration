@@ -199,7 +199,7 @@ def generate_attention_maps(input_dir: str, num_examples: int = 5, model_path: s
             if len(image_map) == len(target_qids):
                 break
 
-    wrapper = HookedM3Wrapper(model_path=model_path, precision="fp16")
+    wrapper = HookedM3Wrapper(model_path=model_path, precision="bf16")  # RTX A4000: Ampere bf16
     scales = [1, 9, 36, 144, 576]
     
     # Hook the last attention layer (layer 32)
@@ -235,6 +235,11 @@ def generate_attention_maps(input_dir: str, num_examples: int = 5, model_path: s
             except Exception as e:
                 logger.error(f"Error extracting attention for QID {qid} scale {m}: {e}")
                 continue
+            finally:
+                # Attn tensor at m=576 with 32 heads is (32, ~700, ~700) ≈ 125 MB.
+                # Release it immediately after extraction on each scale.
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
 
         if attention_maps:
             save_path = plots_dir / f"attention_map_comparison_{qid}.png"
